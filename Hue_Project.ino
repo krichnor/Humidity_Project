@@ -5,6 +5,9 @@
 const char* SensorName     = "krich";
 //////////  Initialize the OLED display using Wire library
 SSD1306  display(0x3c, 5, 4);
+#define hue_sensor_pin 36
+int output_value ;
+
 
 //////////  DHT Setting // for Temperature sensor type DHT11
 #define DHTTYPE DHT11 // Library DHT-sensor-library-master.zip
@@ -15,6 +18,7 @@ DHT dht(DHTPIN, DHTTYPE);
 static char celsiusTemp[7];
 static char humidityTemp[7];
 static char HIndTemp[7];
+static char SoilHumid[7];
 char charSensorDisplay[30];   //Buffer to display message
 
 int sensorPin = 36;   // select the input pin for DHT11
@@ -75,7 +79,7 @@ void setup() {
   dht.begin();
   Serial.begin(115200);
   KBTGGreeting();
-
+  
   ////////// WIFI chacking and setting up ////////////
   if (WiFi.status() != WL_CONNECTED) {
     WIFIconnect();
@@ -94,6 +98,8 @@ void setup() {
       }
     }
   }
+
+  Serial.println("Reading From the Soil Humidity Sensor ...");
 }
 
 void loop() {
@@ -102,8 +108,10 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     setup();
   }
-  TempSensorReadDisplay();
 
+                
+  //TempSensorReadDisplay();
+  
   Serial.print("Device_state = ");
   Serial.println(Device_state);
 
@@ -123,6 +131,25 @@ void loop() {
         Serial.println();
       }
     }   */
+
+  
+    
+
+  // Soil Humidity part
+  output_value= analogRead(hue_sensor_pin);
+  output_value = map(output_value,1535,700,0,100);
+  if(output_value >100){
+    output_value =100;
+  }
+  Serial.print("Mositure : ");
+  Serial.print(output_value);
+  Serial.println("%");
+  Serial.print("Analog value = ");
+  Serial.println(analogRead(hue_sensor_pin));
+  dtostrf(analogRead(hue_sensor_pin),6,2,SoilHumid);
+  // Soil Humidity part.
+
+  Publish_Soil_Humidity();
 
   delay(10000); // 10 sec interval loop
 }
@@ -328,6 +355,48 @@ void TempSensorReadDisplay()
         Serial.print(client.state());
     }
   }  
+}
+
+ 
+void Publish_Soil_Humidity() {
+  ////////// Publish MQTT data ////////////
+  if (WiFi.status() == WL_CONNECTED) {
+    if (client.connect("ESP32Client", mqttUser, mqttPassword )) {
+      sprintf (charDateTime, "%02d:%02d:%02d %02d/%02d/%04d", hour(), minute(), second(), day(), month(), year());
+      //sprintf (MQtopic, "%s/Temp", SensorName);
+      //client.publish(MQtopic, celsiusTemp);
+      //sprintf (MQtopic, "%s/Hue", SensorName);
+      //client.publish(MQtopic, humidityTemp);
+      //sprintf (MQtopic, "%s/HInd", SensorName);
+      //client.publish(MQtopic, HIndTemp);
+      sprintf (MQtopic, "%s/SoilHumid", SensorName);
+     // dtostrf(hic, 6, 2, HIndTemp);
+      client.publish(MQtopic,SoilHumid);
+      if (Device_state < 1) {
+        sprintf (MQtopic, "%s/TimeBoot", SensorName);
+        client.publish(MQtopic, charDateTime);
+        Device_state ++;
+        Device_state_prev = Device_state;
+        Serial.print("After stamp boot time, change Device_state to ");
+        Serial.println(Device_state);
+      } else if (Device_state != Device_state_prev) {
+        sprintf (MQtopic, "%s/TimeReconWIFI", SensorName);
+        client.publish(MQtopic, charDateTime);
+        sprintf (charDateTime, "%i", Device_state);
+        sprintf (MQtopic, "%s/TimeReconTime", SensorName);
+        client.publish(MQtopic, charDateTime);
+        Device_state_prev = Device_state;
+      } else {
+        sprintf (MQtopic, "%s/TimeStamp", SensorName);
+        client.publish(MQtopic, charDateTime);
+        client.disconnect();
+      }
+    } else {
+        Serial.println("Connecting to MQTT");
+        Serial.print("failed with state ");
+        Serial.print(client.state());
+    }
+  }
 }
 
 
